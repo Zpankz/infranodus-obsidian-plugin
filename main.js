@@ -32293,7 +32293,7 @@ var import_obsidian = require("obsidian");
 // src/settings/index.ts
 var SETTINGS = {
   INFRANODUS_API_KEY: "",
-  AI_MODEL: "gpt-4o-mini",
+  AI_MODEL: "gpt-4o",
   SINGLE_PAGE_GRAPH_PROCESSING: "[[Wiki Links]] and Concepts",
   MULTI_PAGE_GRAPH_PROCESSING: "[[Wiki Links]] Only",
   COLOR_SCHEME: "auto",
@@ -32334,10 +32334,16 @@ var InfraNodusSettingTab = class extends import_obsidian.PluginSettingTab {
     });
     new import_obsidian.Setting(containerEl).setName("AI model").setDesc("Choose the AI model to use.").addDropdown((dropdown) => {
       const key = "AI_MODEL";
-      dropdown.addOption("gpt-4o-mini", "GPT-4o (faster and shorter)").addOption("gpt-4", "GPT-4 (thoughtful but slower)").addOption("gpt-4o", "GPT-4o (newer and faster)").addOption(
-        "gpt-3.5-turbo",
-        "GPT-3.5 Turbo (older and weirder)"
-      ).setValue(SETTINGS[key]).onChange(async (value) => onChange(key, value));
+      dropdown.addOption("gpt-4o", "GPT-4o (newer and faster)")
+        .addOption("gpt-4o-mini", "GPT-4o-mini (faster and shorter)")
+        .addOption("gpt-5", "GPT-5 (most advanced)")
+        .addOption("gpt-5-mini", "GPT-5-mini (advanced and efficient)")
+        .addOption("claude-opus-4.1", "Claude Opus 4.1 (creative and analytical)")
+        .addOption("claude-sonnet-4", "Claude Sonnet 4 (balanced performance)")
+        .addOption("gemini-2.5-pro", "Gemini 2.5 Pro (multimodal excellence)")
+        .addOption("gemini-2.5-flash", "Gemini 2.5 Flash (fast multimodal)")
+        .addOption("gemini-2.5-flash-lite", "Gemini 2.5 Flash Lite (lightweight)")
+        .setValue(SETTINGS[key]).onChange(async (value) => onChange(key, value));
     });
     new import_obsidian.Setting(containerEl).setName("Link mentions to").setDesc(
       "How to generate the links between the pages mentioned in your document."
@@ -32538,6 +32544,9 @@ function filterStatements(params) {
 
 // src/infranodus/index.ts
 var MAX_CONTEXT_SIZE = 54e3;
+var GEMINI_MAX_CONTEXT_SIZE = 200e3; // ~1M tokens verified
+var CLAUDE_MAX_CONTEXT_SIZE = 50e3; // ~200K tokens verified
+var GPT5_MAX_CONTEXT_SIZE = 100e3; // ~400K tokens verified
 var InfraNodus = class {
   static async genericPost(url, body, moreFields) {
     const auth_token = SETTINGS.INFRANODUS_API_KEY;
@@ -32839,7 +32848,19 @@ ${statementToAdd}` : ""}`;
     ).join(" | ");
     const dotGraph = dotGraphPrompt || conceptsInTopics;
     currentContextSize += dotGraph.length;
-    const maxPromptSizeForModel = ((_a = SETTINGS) == null ? void 0 : _a.AI_MODEL.includes("gpt-4")) ? MAX_CONTEXT_SIZE : Math.floor(MAX_CONTEXT_SIZE / 4);
+    const getMaxContextSizeForModel = (modelName) => {
+      if (!modelName) return MAX_CONTEXT_SIZE;
+      // Gemini models: 1M context window verified
+      if (modelName.includes("gemini-2.5")) return GEMINI_MAX_CONTEXT_SIZE;
+      // Claude models: 200K context window verified
+      if (modelName.includes("claude-opus-4.1") || modelName.includes("claude-sonnet-4")) return CLAUDE_MAX_CONTEXT_SIZE;
+      // GPT-5 models: 400K context window verified
+      if (modelName.includes("gpt-5")) return GPT5_MAX_CONTEXT_SIZE;
+      // GPT-4 family: existing context window
+      if (["gpt-4o", "gpt-4o-mini"].some(model => modelName.includes(model))) return MAX_CONTEXT_SIZE;
+      return Math.floor(MAX_CONTEXT_SIZE / 4); // fallback for older models
+    };
+    const maxPromptSizeForModel = ((_a = SETTINGS) == null ? void 0 : getMaxContextSizeForModel(_a.AI_MODEL));
     const defaultSizePerTopic = params.adviceMode == "summary" ? 5e3 : 1500;
     const maxSizePerTopic = Math.min(
       Math.floor(
@@ -36260,16 +36281,18 @@ var GraphViewOverlaySettings = (params) => {
       value: "",
       type: "dropdown",
       dropdownOptions: [
+        { value: "gpt-4o", label: "GPT-4o (cheap and fast)" },
         {
           value: "gpt-4o-mini",
           label: "GPT-4o-mini (faster and shorter)"
         },
-        { value: "gpt-4", label: "GPT-4 (thoughtful but slower)" },
-        { value: "gpt-4o", label: "GPT-4o (newer and faster)" },
-        {
-          value: "gpt-3.5-turbo",
-          label: "GPT-3.5 Turbo\xA0(older and weirder)"
-        }
+        { value: "gpt-5", label: "GPT-5 (most advanced)" },
+        { value: "gpt-5-mini", label: "GPT-5-mini (advanced and efficient)" },
+        { value: "claude-opus-4.1", label: "Claude Opus 4.1 (creative and analytical)" },
+        { value: "claude-sonnet-4", label: "Claude Sonnet 4 (balanced performance)" },
+        { value: "gemini-2.5-pro", label: "Gemini 2.5 Pro (multimodal excellence)" },
+        { value: "gemini-2.5-flash", label: "Gemini 2.5 Flash (fast multimodal)" },
+        { value: "gemini-2.5-flash-lite", label: "Gemini 2.5 Flash Lite (cheapest and fastest)" },
       ]
     },
     params.isFolder ? {
